@@ -1,0 +1,110 @@
+daemon off;
+# Heroku dynos have at least 4 cores
+worker_processes <%= ENV['NGINX_WORKERS'] || 4 %>;
+
+events {
+    use epoll;
+    accept_mutex on;
+    worker_connections <%= ENV['NGINX_WORKER_CONNECTIONS'] || 1024 %>;
+}
+
+http {
+    gzip on;
+    gzip_comp_level 2;
+    gzip_min_length 512;
+    server_tokens off;
+
+    log_format main '$time_iso8601 - $status $request - client IP: $http_x_forwarded_for - to $upstream_addr - upstream status: $upstream_status, upstream_response_time $upstream_response_time, request_time $request_time';
+    access_log /dev/stdout main;
+    # set the following to "debug" when diagnosing an issue
+    error_log /dev/stdout debug;
+    log_not_found on;
+
+    include mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+
+    # Must read the body in 5 seconds.
+    client_body_timeout <%= ENV['NGINX_CLIENT_BODY_TIMEOUT'] || 5 %>;
+
+    # handle SNI
+    proxy_ssl_server_name on;
+    # resolver needs to be set because we're using dynamic proxy_pass
+    resolver 8.8.8.8;
+
+    # Customer node servers:
+    server {
+        listen 8001 default_server;
+        server_name _;
+        location ~ ^/api/customer/(.*)$ {
+            proxy_pass https://customer-node.herokuapp.com/customer-api/$1;
+            proxy_set_header Host customer-node.herokuapp.com;
+        }
+    }
+
+    server {
+        listen 8002 default_server;
+        server_name _;
+        location ~ ^/api/customer/(.*)$ {
+            proxy_pass https://customer-node-2.herokuapp.com/customer-api/$1;
+            proxy_set_header Host customer-node-2.herokuapp.com;
+        }
+    }
+
+    # Customer node upstream
+    upstream customer_service {
+        server 127.0.0.1:8001;
+        server 127.0.0.1:8002;
+    }
+
+    # Cartorder node servers:
+    server {
+        listen 8010 default_server;
+        server_name _;
+        location ~ ^/api/cartorder/(.*)$ {
+            proxy_pass https://cartorder.herokuapp.com/$1;
+            proxy_set_header Host cartorder.herokuapp.com;
+        }
+    }
+
+    # Cartorder node upstream:
+    upstream cartorder_service {
+        server 127.0.0.1:8010;
+    }
+
+    # Product node servers:
+    server {
+        listen 8020 default_server;
+        server_name _;
+        location /api/product {
+            proxy_pass https://tuotekanta.herokuapp.com/;
+            proxy_set_header Host tuotekanta.herokuapp.com;
+        }
+        location ~ ^/api/product/(.*)$ {
+            proxy_pass https://tuotekanta.herokuapp.com/$1;
+            proxy_set_header Host tuotekanta.herokuapp.com;
+        }
+    }
+
+    # Product node upstream:
+    upstream product_service {
+        server 127.0.0.1:8020;
+    }
+
+    server {
+        listen <%= ENV["PORT"] %>;
+        server_name _;
+
+        location ~ ^/api/customer {
+            proxy_pass http://customer_service;
+        }
+
+        location ~ ^/api/cartorder {
+            proxy_pass http://cartorder_service;
+        }
+
+        location ~ ^/api/product {
+            proxy_pass http://product_service;
+        }
+    }
+}
