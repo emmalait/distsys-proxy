@@ -54,7 +54,7 @@ upstream customer_service {
 The main server then uses the customer_service upstream for all incoming requests to uri /api/customer:
 
 ```
-location ~ ^/api/customer {
+location /api/customer {
     proxy_pass http://customer_service;
 }
 ```
