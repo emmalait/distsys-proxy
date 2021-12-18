@@ -95,15 +95,15 @@ http {
         listen <%= ENV["PORT"] %>;
         server_name _;
 
-        location ~ ^/api/customer {
+        location /api/customer {
             proxy_pass http://customer_service;
         }
 
-        location ~ ^/api/cartorder {
+        location /api/cartorder {
             proxy_pass http://cartorder_service;
         }
 
-        location ~ ^/api/product {
+        location /api/product {
             proxy_pass http://product_service;
         }
     }
